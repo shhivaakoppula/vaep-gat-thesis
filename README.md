@@ -1,773 +1,288 @@
-# Football Player Evaluation Using Graph Neural Networks
+# Dynamic Positional Value Modelling Using Graph Neural Networks
 
-## Master's Thesis
+**A comparison of a Graph Attention Network with the VAEP baseline on StatsBomb 360 data**
 
-This GitHub repository contains the code, data-processing workflow, experiments, and documentation for my Master's thesis in Data Science.
-
-The thesis investigates whether Graph Neural Networks (GNNs), particularly Graph Attention Networks (GATs), can be used to evaluate football actions and player performance by considering the spatial relationships between players.
-
----
-
-## 1. Thesis Overview
-
-Football performance is often evaluated using traditional statistics such as:
-
-- Goals
-- Assists
-- Passes
-- Shots
-- Tackles
-- Minutes played
-
-These statistics are useful, but they do not always capture the context in which an action happened.
-
-For example, two players may complete the same pass, but the difficulty and value of the two passes may be very different depending on:
-
-- The player's position
-- Teammate positions
-- Opponent positions
-- Distance to the goal
-- Pressure from opponents
-- Available passing options
-- Tactical situation
-
-This thesis investigates whether this spatial and relational information can be represented using graphs and processed using Graph Neural Networks.
-
-The central idea is:
-
-> **Instead of evaluating a football action only by what happened, evaluate the action together with the spatial context in which it happened.**
+M.Sc. thesis, Data Science (Digital Health), SRH University, Campus Fürth.
+Author: Shiva Goud Koppula
+Supervisor: Prof. Dr. Clifford Sell
+Second examiner: Prof. Dr. Clemens Werkmeister
 
 ---
 
-# 2. Research Questions
+## Contents
 
-## RQ1 — Football Action Evaluation
-
-### Research Question
-
-**Does a Graph Attention Network (GAT) achieve better predictive performance than an established football action-value approach such as VAEP?**
-
-The main evaluation metric is:
-
-- ROC-AUC
-
-Additional metrics include:
-
-- PR-AUC
-- Precision
-- Recall
-- F1-score
-- Confusion Matrix
-
-The objective is to determine whether incorporating spatial relationships between players improves football action prediction.
+1. [Summary](#1-summary)
+2. [Research question and hypotheses](#2-research-question-and-hypotheses)
+3. [Background](#3-background)
+4. [Data](#4-data)
+5. [Method](#5-method)
+6. [Experimental design: separating input and model](#6-experimental-design-separating-input-and-model)
+7. [Results](#7-results)
+8. [Robustness checks and error analysis](#8-robustness-checks-and-error-analysis)
+9. [Limitations](#9-limitations)
+10. [Repository structure](#10-repository-structure)
+11. [Scripts](#11-scripts)
+12. [Installation and how to reproduce](#12-installation-and-how-to-reproduce)
+13. [Computing environment and run times](#13-computing-environment-and-run-times)
+14. [Future work](#14-future-work)
+15. [Data licence and citation](#15-data-licence-and-citation)
+16. [References](#16-references)
+17. [Contact](#17-contact)
 
 ---
 
-## RQ2 — Player Market Value
+## 1. Summary
 
-### Research Question
+Football produces well over a thousand recorded actions per match, but a match report counts only a few of them. Action-value models such as VAEP (Valuing Actions by Estimating Probabilities) give every action a value by estimating how it changes the probability that the team scores or concedes soon afterwards.
 
-**Does a GNN-based player performance score predict football player market value better than conventional football statistics?**
+VAEP describes an action with a table of features (action type, result, location, and the previous actions). It does not use the positions of the other players on the pitch. StatsBomb 360 data adds a freeze frame to many actions: the position of every visible player at the moment of the action. This thesis asks whether a model that can use those positions predicts an upcoming goal better than VAEP.
 
-The GNN-based player score will be compared with traditional performance indicators such as:
+I represent each action as a graph. Each visible player is a node, edges connect each player to the nearest neighbours, and a graph attention network (GAT) reads the graph at the node of the acting player. I compare this GAT with the XGBoost model of VAEP on the same validation actions, using AUC-ROC, a paired DeLong test and a match-level bootstrap.
 
-- Goals
-- Assists
-- Pass-related statistics
-- Other conventional football statistics
+**Main finding:** under the same evaluation, VAEP (AUC-ROC 0.7731) scores higher than the GAT (0.7178). A four-cell experiment shows that most of the gap comes from the action context that VAEP has and the GAT does not, and from the model type, not from the positional information itself.
 
-The main statistical comparison will use:
+## 2. Research question and hypotheses
 
-- R² (Coefficient of Determination)
+**RQ1.** Does a graph attention network that can see the position of every visible player predict an upcoming goal better than VAEP?
 
-The objective is to investigate whether the proposed player representation contains information that is useful for explaining differences in player market value.
+- H0: the AUC-ROC of VAEP and the GAT on the same validation actions is equal.
+- H1: the two AUC-ROC values differ.
 
----
+The test is two-sided and uses the paired DeLong test, because both models score the same actions.
 
-## RQ3 — Identification of Undervalued Players
+Market-value modelling and the search for undervalued players were part of the early project plan. They are not part of the final thesis and appear only under future work.
 
-### Research Question
+## 3. Background
 
-**Can the proposed GNN-based player representation identify players who have strong performance profiles but relatively low market values?**
+- **VAEP** (Decroos et al., 2019) values an action by the change in the probability of scoring and the probability of conceding within the next N actions. N = 10 is the main horizon in this thesis, and N = 5 is the second horizon.
+- **SPADL** (Soccer Player Action Description Language) is the standard table format for football actions that VAEP uses.
+- **GAT** (Veličković et al., 2018) is a graph neural network in which each node learns how much attention to give to each neighbour.
+- **StatsBomb 360** provides, for many events, a freeze frame with the position of each visible player, a flag for teammate or opponent, a flag for the goalkeeper and a flag for the acting player.
 
-The research will investigate whether player representations can be used to find players who are:
+Tree-based models are often hard to beat on tabular data (Grinsztajn et al., 2022; McElfresh et al., 2023). The closest football study I found reported that a GAT lost to a tree-based baseline on a goal task. This is why the thesis tests the comparison carefully instead of assuming the graph model wins.
 
-- High-performing according to the model
-- Similar to high-performing players
-- Relatively low in market value
+## 4. Data
 
-Similarity-search methods such as FAISS may be investigated for this purpose.
+Source: StatsBomb open data with 360 frames (https://github.com/statsbomb/open-data).
 
----
+| Measure | Value |
+|---|---|
+| Matches | 426 |
+| Events | 1,585,353 |
+| Columns per event | 146 |
+| Training matches | 292 (six international tournaments) |
+| Validation matches | 134 (five club teams plus one AFCON match) |
 
-# 3. Research Framework
+Training competitions: UEFA Euro 2020 (51 matches), UEFA Euro 2024 (51), UEFA Women's Euro 2022 (31), UEFA Women's Euro 2025 (31), and the FIFA World Cup tournaments listed in Table 4 of the thesis.
 
-The overall research framework is:
+Validation teams: Bayer 04 Leverkusen (34 matches), FC Barcelona (35), Paris Saint-Germain (58), Inter Miami (6) and one AFCON match.
 
-```text
-Football Event Data
-        |
-        v
-Spatial / 360 Data
-        |
-        v
-Player Interaction Representation
-        |
-        v
-Graph Construction
-        |
-        v
-Graph Neural Network
-        |
-        v
-Action Evaluation
-        |
-        v
-Player Performance Representation
-        |
-        +----------------------+
-        |                      |
-        v                      v
-Market Value Analysis     Undervalued Players
-        |
-        v
-       RQ2                    RQ3
-````
+The split is by competition, not by random action, so no match appears in both sets. There is no separate test set. The validation set was also used for the robustness checks (see Limitations).
 
-RQ1 focuses on whether the graph-based model can improve action-level prediction.
+**The data is not included in this repository.** See `data/README.md` for the download steps.
 
-RQ2 investigates whether the resulting player-level score is related to market value.
+## 5. Method
 
-RQ3 investigates whether the representation can support player scouting and identification of potentially undervalued players.
+### 5.1 Label
 
----
+For every action, the label is 1 if the acting team scores a goal within the next N actions and 0 otherwise. Main horizon N = 10. The second horizon N = 5 and a sweep over ten horizons are reported as robustness checks.
 
-# 4. Dataset
+### 5.2 VAEP baseline (XGBoost)
 
-The main football data used in this research comes from **StatsBomb Open Data**.
+- Input set A: type and result of the current action, start and end location, and the same information for the previous actions, in SPADL format.
+- Model: XGBoost (a sum of K regression trees with a logistic output).
+- Reproduction check: my reproduction of VAEP reaches an AUC-ROC of 0.7693 in the prototype, in line with the published model.
 
-The dataset provides detailed football event information and, for selected matches, additional StatsBomb 360 positional information.
+### 5.3 Graph attention network
 
-The data contains football events such as:
+- Input set B: for each visible player, x and y position, teammate flag, goalkeeper flag, actor flag, and distance and angle to goal (seven node features in the main model).
+- Graph: one graph per action, each visible player is a node, edges connect each player to its k = 5 nearest neighbours.
+- Layers: PyTorch Geometric `GATConv` with 4 attention heads. The edge flag (teammate or opponent) enters the attention score.
+- Readout: the vector of the actor node.
+- Optimiser: Adam. Single seed (42).
 
-* Pass
-* Carry
-* Shot
-* Pressure
-* Dribble
-* Duel
-* Interception
-* Clearance
-* Ball Recovery
-* Foul
-* Goalkeeper actions
-* Substitution
-* Other match events
+### 5.4 Evaluation
 
-The extracted event dataset contains approximately:
+- Primary metric: AUC-ROC on the validation actions.
+- Secondary metrics: PR-AUC and Brier score.
+- Test: paired DeLong test (z and p value) for the difference between two AUC values on the same actions.
+- Interval: match-level bootstrap with 2,000 resamples.
+- Error analysis: AUC-ROC by decile of the actions of each match, capture rate of goal-leading actions, calibration by decile, and disagreement on goal-leading actions.
 
-**1.58 million football events**
+## 6. Experimental design: separating input and model
 
-from the selected match collection.
+VAEP and the GAT differ in two things at once: the input and the model. A direct comparison cannot say which one causes a gap. I therefore ran a four-cell design that crosses model and input.
 
----
+| Cell | Model | Input | Meaning |
+|---|---|---|---|
+| 1 | XGBoost | A | VAEP as published |
+| 2 | GAT | B | The GAT of RQ1 |
+| 3 | XGBoost | A + B | Trees with action context and a summary of the freeze frame |
+| 4 | GAT | A + B | Graph model that also receives the action context (late fusion) |
 
-# 5. Event Data
+Cell 4 overfits (late fusion). Its epoch-5 AUC-ROC was 0.7706, and the reported final value is 0.7484.
 
-The event data describes what happened during a football match.
+## 7. Results
 
-Important variables include:
+Validation AUC-ROC at N = 10, single seed 42:
 
-| Variable              | Description                           |
-| --------------------- | ------------------------------------- |
-| `match_id`            | Unique match identifier               |
-| `id`                  | Unique event identifier               |
-| `period`              | Match period                          |
-| `timestamp`           | Event timestamp                       |
-| `minute`              | Match minute                          |
-| `second`              | Match second                          |
-| `type.name`           | Type of football event                |
-| `player.id`           | Player identifier                     |
-| `player.name`         | Player name                           |
-| `team.id`             | Team identifier                       |
-| `team.name`           | Team name                             |
-| `location`            | Location of the event                 |
-| `pass.end_location`   | End location of a pass                |
-| `pass.length`         | Pass length                           |
-| `pass.angle`          | Pass angle                            |
-| `pass.recipient.name` | Pass recipient                        |
-| `shot.statsbomb_xg`   | StatsBomb expected goals value        |
-| `shot.outcome.name`   | Shot outcome                          |
-| `carry.end_location`  | End location of a carry               |
-| `under_pressure`      | Whether the player was under pressure |
+| Cell | Model | Input | AUC-ROC |
+|---|---|---|---|
+| 1 | XGBoost | A | 0.7731 |
+| 2 | GAT | B | 0.7178 (best configuration: 0.7222) |
+| 3 | XGBoost | A + B | 0.7760 |
+| 4 | GAT | A + B | 0.7484 |
 
-The complete event dataset contains many additional event-specific variables.
+Decomposition of the total gap (0.0553 between cell 1 and cell 2):
 
----
+| Effect | Size |
+|---|---|
+| Model effect | 0.0276 |
+| Action-context effect | 0.0306 |
+| Positional effect | 0.0029 |
+| Total gap | 0.0553 |
 
-# 6. StatsBomb 360 Data
+Reading: the positional information adds very little to the trees (0.0029). Most of the gap comes from the model type and from the action context that the GAT does not receive in its main form.
 
-StatsBomb 360 data provides additional spatial information around football events.
+The full tables (AUC-ROC, PR-AUC, Brier score, DeLong z and p values, bootstrap intervals) are in `results/` and in Chapter 4 and Appendix D of the thesis.
 
-This allows the research to investigate not only:
+## 8. Robustness checks and error analysis
 
-> "What action did the player perform?"
+- Number of neighbours k = 3, 5, 8 (k = 5 re-run as a self-check).
+- Five node-feature groupings.
+- A ladder of node-feature counts from eight features down to one, at N = 10 and N = 5.
+- Ten label horizons for VAEP, and the comparison of VAEP with the best GAT at both horizons.
+- Per-match comparison for matches with at least three positives (117 matches; 10 matches had fewer).
+- Capture rate: the share of all goal-leading actions found in each model's highest-scored actions.
+- Calibration by decile of each model's own score, and disagreement on goal-leading actions.
 
-but also:
+## 9. Limitations
 
-> "What was the spatial situation when the action was performed?"
+- Single random seed (42). I did not estimate the variation between seeds.
+- No separate test set. The validation set was used for the robustness checks, so the numbers are validation numbers.
+- The GAT in cell 4 overfits. The comparison in cell 4 is therefore a lower bound for a fused graph model.
+- The validation set contains mostly club matches and the training set only international matches, so the split also changes the type of football.
+- I did not break the error analysis down by action type or pitch zone.
+- I did not test the stability or validity of player ratings built from the action values.
 
-Important variables include:
+## 10. Repository structure
 
-| Variable       | Description                                    |
-| -------------- | ---------------------------------------------- |
-| `match_id`     | Match identifier                               |
-| `event_uuid`   | Event identifier associated with the 360 frame |
-| `visible_area` | Visible part of the pitch                      |
-| `x`            | Player x-coordinate                            |
-| `y`            | Player y-coordinate                            |
-| `teammate`     | Whether the player is a teammate               |
-| `keeper`       | Whether the player is a goalkeeper             |
-| `actor`        | Whether the player performed the event         |
-
-This information provides the basis for constructing player interaction graphs.
-
----
-
-# 7. Graph Representation
-
-Football situations can be represented as graphs.
-
-## Nodes
-
-Each visible player can be represented as a node.
-
-Node features can include:
-
-* X-coordinate
-* Y-coordinate
-* Teammate/opponent indicator
-* Goalkeeper indicator
-* Actor indicator
-* Distance to goal
-* Angle to goal
-
-## Edges
-
-Edges represent relationships between players.
-
-For the prototype, spatial proximity is used to determine neighbouring players.
-
-This allows the model to represent relationships such as:
-
-```text
-Player A
- /     \
-Player B Player C
- \       /
-  Player D
 ```
-
-The graph therefore represents the spatial structure of the football situation.
-
----
-
-# 8. Graph Neural Network
-
-A Graph Neural Network (GNN) is a neural-network architecture designed for graph-structured data.
-
-A football situation is suitable for graph modelling because players interact with each other.
-
-The specific architecture investigated in this research is the:
-
-## Graph Attention Network (GAT)
-
-GAT uses an attention mechanism to learn the relative importance of neighbouring nodes.
-
-In the context of football, this allows the model to learn which surrounding players and spatial relationships are more relevant to the action being evaluated.
-
----
-
-# 9. Baseline: VAEP
-
-One of the existing football action-value approaches considered in this research is:
-
-**VAEP — Valuing Actions by Estimating Probabilities**
-
-VAEP evaluates football actions by estimating how an action changes the probability of desirable outcomes.
-
-The thesis investigates whether a graph-based representation containing spatial player relationships can provide additional predictive information compared with an established football action-value methodology.
-
-The comparison must use a consistent experimental setup, including:
-
-* Comparable prediction target
-* Comparable dataset
-* Appropriate training/test split
-* Same evaluation metric
-* No information leakage
-
----
-
-# 10. Training and Validation
-
-A key part of the research methodology is separating data used to develop the model from data used to evaluate it.
-
-## Training Data
-
-Training data is used to:
-
-* Learn model parameters
-* Develop the model
-* Test modelling decisions
-
-## Validation/Test Data
-
-Previously unseen data is used to:
-
-* Evaluate predictive performance
-* Measure generalisation
-* Compare models
-
-The research considers football-specific splitting strategies.
-
-### Temporal Split
-
-Earlier matches can be used for model development and later matches for evaluation.
-
-```text
-Earlier matches
-      |
-      v
-Training
-      |
-      v
-Model
-      |
-      v
-Later matches
-      |
-      v
-Validation/Test
-```
-
-This approach reflects a realistic football analytics scenario in which historical data is used to make predictions about future matches.
-
-Other split strategies, such as team or league-based splits, may also be considered depending on the final experimental design.
-
----
-
-# 11. Data Processing
-
-The research follows a structured data-processing pipeline:
-
-```text
-Raw Data
-   |
-   v
-Data Extraction
-   |
-   v
-Data Selection
-   |
-   v
-Data Cleaning
-   |
-   v
-Event / 360 Matching
-   |
-   v
-Feature Engineering
-   |
-   v
-Graph Construction
-   |
-   v
-Model Training
-   |
-   v
-Model Evaluation
-```
-
-The processing steps are documented so that the research can be reproduced and the methodological decisions can be inspected.
-
----
-
-# 12. Feature Engineering
-
-The graph model uses spatial and contextual information.
-
-Example node features include:
-
-### Spatial features
-
-* `x`
-* `y`
-
-### Player relationship features
-
-* `teammate`
-* `keeper`
-* `actor`
-
-### Derived spatial features
-
-* Distance to goal
-* Angle to goal
-
-These features are used to represent the spatial context of the football action.
-
-The feature-selection process will be documented and justified as part of the thesis methodology.
-
----
-
-# 13. Class Imbalance
-
-Football actions are not evenly distributed.
-
-For example, there are many more:
-
-* Passes
-* Carries
-* Ball receipts
-
-than:
-
-* Shots
-* Goals
-* Other rare events
-
-Therefore, the classification problem can contain a substantial class imbalance.
-
-This is important when evaluating the model.
-
-For this reason, the research does not rely only on accuracy.
-
-Additional metrics such as:
-
-* ROC-AUC
-* PR-AUC
-* Precision
-* Recall
-* F1-score
-
-are considered.
-
----
-
-# 14. Evaluation Metrics
-
-## ROC-AUC
-
-**ROC-AUC = Area Under the Receiver Operating Characteristic Curve**
-
-ROC-AUC measures how well a model can distinguish between different classes across classification thresholds.
-
-A value closer to:
-
-**1.0**
-
-indicates stronger discrimination.
-
----
-
-## PR-AUC
-
-**PR-AUC = Area Under the Precision-Recall Curve**
-
-PR-AUC is particularly useful when the positive class is relatively rare.
-
----
-
-## Precision
-
-Precision measures:
-
-> Of the events predicted as positive, how many were actually positive?
-
----
-
-## Recall
-
-Recall measures:
-
-> Of all actual positive events, how many did the model identify?
-
----
-
-## F1-score
-
-F1-score combines precision and recall into a single metric.
-
----
-
-## R²
-
-**R² = Coefficient of Determination**
-
-R² is used for the player market-value analysis.
-
-It measures how much of the variation in the target variable can be explained by the model.
-
----
-
-# 15. Research Transparency
-
-An important principle of this thesis is transparency.
-
-The research will document:
-
-* Data sources
-* Data selection criteria
-* Data-cleaning procedures
-* Feature definitions
-* Graph-construction decisions
-* Model architecture
-* Hyperparameters
-* Training procedure
-* Validation strategy
-* Evaluation metrics
-* Baseline methodology
-* Experimental results
-
-All important methodological decisions should have a clear reason.
-
----
-
-# 16. Literature Review
-
-The literature review covers several areas:
-
-### Football Analytics
-
-Research concerning:
-
-* Football event analysis
-* Player evaluation
-* Tactical analysis
-* Action valuation
-
-### Action Valuation
-
-Research concerning:
-
-* VAEP
-* Expected goals
-* Expected assists
-* Possession value
-* Action-value models
-
-### Graph Neural Networks
-
-Research concerning:
-
-* GNN
-* GCN
-* GAT
-* Graph representation learning
-
-### Sports Analytics
-
-Research concerning:
-
-* Player performance
-* Player recruitment
-* Player valuation
-* Scouting
-
-### Machine Learning
-
-Research concerning:
-
-* Classification
-* Regression
-* Imbalanced datasets
-* Model evaluation
-
-The literature search methodology will be documented separately, including:
-
-* Databases searched
-* Search terms
-* Boolean operators
-* Inclusion criteria
-* Exclusion criteria
-* Screening process
-* Relevant papers
-* Relationship of papers to the research questions
-
----
-
-# 17. Reproducibility
-
-The goal of this repository is to make the research process understandable and reproducible.
-
-The repository will contain:
-
-```text
-football-player-evaluation/
-│
+vaep-gat-thesis/
 ├── README.md
-│
+├── requirements.txt
+├── .gitignore
 ├── data/
-│
-├── scripts/
-│
-├── src/
-│
-├── notebooks/
-│
-├── results/
-│
-├── models/
-│
-├── literature/
-│
-├── thesis/
-│
-└── requirements.txt
+│   └── README.md           how to download the StatsBomb data (no data files)
+├── scripts/                all scripts, numbered 00 to 25 as in the VS Code folder
+├── results/                small result tables (CSV)
+├── figures/                figures used in the thesis (PNG)
+└── thesis/
+    └── Thesis_Final_Submission.pdf
 ```
 
-The exact directory structure may change as the research develops.
+## 11. Scripts
 
----
+Scripts are numbered in the order I wrote and ran them. Run them in numeric order. File names in the repository are the same as in Appendix E of the thesis.
 
-# 18. Software and Technologies
+| Numbers | Purpose |
+|---|---|
+| 00 to 08 | Prototype on 34 matches: data extraction, matches, events, frames, first VAEP and GAT runs |
+| 09, 10 | Full-scale label and its check |
+| 11 | Full-scale VAEP (XGBoost) |
+| 12 | Full-scale GAT |
+| 13 to 15 | Overview figures for the prototype |
+| 16 to 18 | Parity experiment: the four cells with the same validation actions |
+| 19, 20 | Utility scripts |
+| 21 A to E | Ablations: number of neighbours, node-feature groupings, feature-count ladder |
+| 22 | Label-horizon sweep |
+| 23, 23 A | DeLong tests |
+| 24, 25 | Error analysis |
+| plot scripts (2) | Final figures for the thesis |
 
-The research uses Python-based data-science and machine-learning tools.
+Output files keep the earlier run-log prefixes (06 to 29) in their names, so a file prefix and a script number can differ. Table E2 in Appendix E of the thesis maps each script to its output.
 
-Main technologies include:
+## 12. Installation and how to reproduce
 
-* Python
-* Pandas
-* NumPy
-* Scikit-learn
-* PyTorch
-* PyTorch Geometric
-* Matplotlib
-* StatsBomb data
-* Jupyter Notebook
+**Requirements:** Python [version], about 16 GB of memory. No GPU is needed.
 
-Additional libraries may be added as the research develops.
-
----
-
-# 19. Abbreviations
-
-| Abbreviation | Full Form                                              |
-| ------------ | ------------------------------------------------------ |
-| AI           | Artificial Intelligence                                |
-| ML           | Machine Learning                                       |
-| DL           | Deep Learning                                          |
-| GNN          | Graph Neural Network                                   |
-| GAT          | Graph Attention Network                                |
-| GCN          | Graph Convolutional Network                            |
-| VAEP         | Valuing Actions by Estimating Probabilities            |
-| ROC          | Receiver Operating Characteristic                      |
-| AUC          | Area Under the Curve                                   |
-| ROC-AUC      | Area Under the Receiver Operating Characteristic Curve |
-| PR-AUC       | Area Under the Precision-Recall Curve                  |
-| xG           | Expected Goals                                         |
-| R²           | Coefficient of Determination                           |
-| KNN          | K-Nearest Neighbours                                   |
-| FAISS        | Facebook AI Similarity Search                          |
-| API          | Application Programming Interface                      |
-| CSV          | Comma-Separated Values                                 |
-| GATConv      | Graph Attention Convolution                            |
-
----
-
-# 20. Current Research Status
-
-The research is currently focused on developing and validating the methodology for **RQ1**.
-
-The current work includes:
-
-* Football data extraction
-* Event-data exploration
-* StatsBomb 360 data processing
-* Event and 360-data matching
-* Data cleaning
-* Feature engineering
-* Graph construction
-* GAT model development
-* Initial model training
-* Initial evaluation
-
-The prototype is being used to identify methodological problems before applying the approach to a larger and more rigorous experimental setup.
-
-The results from the prototype should therefore be interpreted as **preliminary results**, not as the final thesis findings.
-
----
-
-# 21. Future Work
-
-The next stages of the research include:
-
-### RQ1
-
-* Finalise the experimental design
-* Establish a properly justified baseline
-* Ensure a fair comparison with VAEP
-* Evaluate different model configurations
-* Perform robustness checks
-* Investigate generalisation
-
-### RQ2
-
-* Develop player-level aggregation
-* Obtain and integrate market-value data
-* Compare GNN-based scores with conventional statistics
-* Perform regression analysis
-* Compare R² and other relevant metrics
-
-### RQ3
-
-* Create player representations
-* Apply similarity search
-* Compare player performance with market value
-* Identify potential undervalued players
-* Perform qualitative analysis of candidate players
-
----
-
-# 22. Research Goal
-
-The overall goal of the thesis is to investigate whether **spatial and relational information between football players can improve football performance evaluation using Graph Neural Networks**.
-
-The research ultimately aims to connect:
-
-```text
-Football Events
-       +
-Spatial Context
-       +
-Player Relationships
-       ↓
-Graph Neural Network
-       ↓
-Action Evaluation
-       ↓
-Player Performance
-       ↓
-Market Value
-       ↓
-Scouting / Recruitment
+```bash
+git clone https://github.com/shhivaakoppula/vaep-gat-thesis.git
+cd vaep-gat-thesis
+python -m venv .venv
+source .venv/bin/activate        # on Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
----
+Main packages: pandas, numpy, scipy, scikit-learn, xgboost, torch, torch-geometric, socceraction, matplotlib.
 
-## Author
+**Data:**
 
-**Master's Thesis — Data Science**
+1. Download https://github.com/statsbomb/open-data (or clone it).
+2. Place it in `data/` (see `data/README.md` for the exact folder names the scripts expect).
 
-This repository is developed as part of my Master's thesis research.
+**Run:**
 
----
+```bash
+python scripts/00_...py
+...
+python scripts/25_...py
+```
 
-## Disclaimer
+Replace the file names with the names in `scripts/`. Steps 11, 12 and 21 are slow (hours). To check the pipeline first, run the prototype scripts 00 to 08 on the 34 prototype matches.
 
-The results presented in this repository are part of an ongoing academic research project.
+Random seed: 42 in all scripts.
 
-Prototype results should not be interpreted as final conclusions until the complete experimental design, validation procedure, baseline comparison, and statistical analysis have been completed.
+## 13. Computing environment and run times
+
+All runs ran on a personal laptop with 16 GB of memory and no graphics processor.
+
+| Step | Approximate time |
+|---|---|
+| Building the graphs, training set | 90 minutes |
+| Building the graphs, validation set | 42 minutes |
+| One full GAT training run | 150 minutes |
+| One ablation run | 130 to 650 minutes |
+
+The longest ablation (653.5 minutes) includes one epoch of 28,816 seconds, almost certainly because the laptop went to sleep. It is not real computing time.
+
+## 14. Future work
+
+- More random seeds, and a separate held-out test set.
+- A GAT that receives the action context early (early fusion) instead of late fusion.
+- Error analysis by action type and pitch zone.
+- Player ratings built from the action values, and their stability.
+- Market-value modelling and the search for undervalued players (the original RQ2 and RQ3), which this thesis does not address.
+
+## 15. Data licence and citation
+
+The StatsBomb open data is covered by StatsBomb's own licence, which requires attribution. If you use it, credit StatsBomb and follow the terms at https://github.com/statsbomb/open-data.
+
+Code licence: [add your licence here, for example MIT].
+
+To cite this work:
 
 ```
+Koppula, S. G. (2026). Dynamic Positional Value Modelling Using Graph Neural Networks:
+A Comparison of a Graph Attention Network with the VAEP Baseline. M.Sc. thesis,
+SRH University, Campus Fürth.
 ```
+
+## 16. References
+
+- Decroos, T., Bransen, L., Van Haaren, J., & Davis, J. (2019). Actions speak louder than goals: Valuing player actions in soccer. KDD 2019.
+- Decroos, T., Dzyuba, V., Van Haaren, J., & Davis, J. (2020). Interpretable prediction of goals in soccer / look-ahead horizon in VAEP. IJCAI-20, pp. 4696–4700.
+- Veličković, P., et al. (2018). Graph attention networks. ICLR 2018.
+- Chen, T., & Guestrin, C. (2016). XGBoost: A scalable tree boosting system. KDD 2016.
+- Fey, M., & Lenssen, J. E. (2019). Fast graph representation learning with PyTorch Geometric.
+- DeLong, E. R., DeLong, D. M., & Clarke-Pearson, D. L. (1988). Comparing the areas under two or more correlated receiver operating characteristic curves. Biometrics, 44(3).
+- Grinsztajn, L., Oyallon, E., & Varoquaux, G. (2022). Why do tree-based models still outperform deep learning on typical tabular data? NeurIPS 2022.
+- McElfresh, D., et al. (2023). When do neural nets outperform boosted trees on tabular data? NeurIPS 2023.
+- StatsBomb (2024). StatsBomb open data. https://github.com/statsbomb/open-data
+
+The full reference list (49 entries) is in the thesis.
+
+## 17. Contact
+
+Shiva Goud Koppula, SRH University, Campus Fürth.
+GitHub: https://github.com/shhivaakoppula
