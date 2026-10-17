@@ -24,3 +24,68 @@ matplotlib
 
 # progress bars
 tqdm
+## Installation of each package
+
+Use a virtual environment so the packages do not mix with other projects.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
+```
+
+Install everything at once:
+
+```bash
+pip install -r requirements.txt
+```
+
+If you prefer to install the packages one by one, or one of them fails, use the commands below.
+
+| Package | Version | What it is used for | Install command |
+|---|---|---|---|
+| numpy | >= 1.24 | arrays and numerical work | `pip install "numpy>=1.24"` |
+| pandas | >= 2.0 | tables for events, actions and results | `pip install "pandas>=2.0"` |
+| scipy | >= 1.10 | statistics (rank tests, normal distribution for the DeLong test) | `pip install "scipy>=1.10"` |
+| scikit-learn | >= 1.3 | metrics (AUC-ROC, PR-AUC, Brier score) and data splits | `pip install "scikit-learn>=1.3"` |
+| xgboost | >= 2.0 | the VAEP baseline model | `pip install "xgboost>=2.0"` |
+| socceraction | >= 1.5 | SPADL actions and the VAEP feature code | `pip install "socceraction>=1.5"` |
+| torch (PyTorch) | >= 2.0 | the neural network and training loop | see below |
+| torch-geometric | >= 2.4 | `GATConv` and graph data objects | see below |
+| statsbombpy | >= 1.12 | reading StatsBomb open data (optional) | `pip install "statsbombpy>=1.12"` |
+| matplotlib | >= 3.7 | figures | `pip install "matplotlib>=3.7"` |
+| tqdm | >= 4.65 | progress bars | `pip install "tqdm>=4.65"` |
+
+### PyTorch (CPU, no graphics card needed)
+
+The thesis runs used a laptop without a GPU, so the CPU version is enough:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+```
+
+For a GPU, choose the command for your CUDA version on https://pytorch.org/get-started/locally/.
+
+### PyTorch Geometric
+
+Install it after PyTorch:
+
+```bash
+pip install torch-geometric
+```
+
+The core `GATConv` layer used here does not need the optional extension packages (`torch-scatter`, `torch-sparse`). If you see an error that mentions them, follow https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html and pick the command that matches your PyTorch version.
+
+### Check the installation
+
+```bash
+python print_versions.py
+python -c "import torch, torch_geometric; print(torch.__version__, torch_geometric.__version__)"
+```
+
+### Common problems
+
+- `pip` is not found: use `python -m pip install ...`.
+- Build errors for xgboost or scipy on an old Python: upgrade pip and use Python 3.10 or newer.
+- `ModuleNotFoundError: socceraction`: run `pip install socceraction` inside the active virtual environment.
+- Different results: package versions can change small numbers in the last digits. The thesis used seed 42. For the exact thesis versions, use the pinned `requirements.txt` produced by `print_versions.py`.
