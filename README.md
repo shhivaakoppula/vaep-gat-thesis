@@ -2,10 +2,11 @@
 
 **A comparison of a Graph Attention Network with the VAEP baseline on StatsBomb 360 data**
 
-M.Sc. thesis, Data Science (Digital Health), SRH University, Campus Fürth.
-Author: Shiva Goud Koppula
-Supervisor: Prof. Dr. Clifford Sell
-Second examiner: Prof. Dr. Clemens Werkmeister
+> **M.Sc. thesis, Data Science (Digital Health)**<br>
+> SRH University, Campus Fürth.<br>
+> **Author:** Shiva Goud Koppula<br>
+> **Supervisor:** Prof. Dr. Clifford Sell<br>
+> **Second examiner:** Prof. Dr. Clemens Werkmeister
 
 ---
 
